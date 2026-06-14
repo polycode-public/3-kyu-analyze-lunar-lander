@@ -11,6 +11,7 @@ import {
   step,
   simulate,
   score,
+  autopilot,
 } from "../../src/lib/main.js";
 
 describe("Main Output", () => {
@@ -260,5 +261,56 @@ describe("score", () => {
     ];
     const expectedScore = (25 - 10) * 10 + (4 - 3) * 25;
     expect(score(trace)).toBe(expectedScore);
+  });
+});
+
+describe("autopilot", () => {
+  test("lands safely with default initial conditions", () => {
+    const trace = simulate(createState(), autopilot);
+    const finalState = trace[trace.length - 1];
+    expect(finalState.landed).toBe(true);
+    expect(finalState.velocity).toBeLessThanOrEqual(4);
+  });
+
+  test("returns 0 when already landed or crashed", () => {
+    const landed = { altitude: 0, velocity: 2, fuel: 10, tick: 1, landed: true, crashed: false };
+    const crashed = { altitude: 0, velocity: 5, fuel: 10, tick: 1, landed: false, crashed: true };
+    expect(autopilot(landed)).toBe(0);
+    expect(autopilot(crashed)).toBe(0);
+  });
+
+  test("returns 0 when no fuel", () => {
+    const state = createState({ fuel: 0 });
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("returns 0 when velocity is safe", () => {
+    const state = createState({ altitude: 1000, velocity: 2 });
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("lands at least 10 distinct combinations across the ranges", () => {
+    let landed = 0;
+    for (const altitude of [500, 1000, 1500, 2000])
+      for (const velocity of [20, 40, 60, 80])
+        for (const fuel of [10, 25, 50]) {
+          const trace = simulate(createState({ altitude, velocity, fuel }), autopilot);
+          const f = trace[trace.length - 1];
+          if (f.landed && f.velocity <= 4) landed++;
+        }
+    expect(landed).toBeGreaterThanOrEqual(10);
+  });
+
+  test("handles impossible combinations without throwing", () => {
+    const impossible = [
+      { altitude: 500, velocity: 80, fuel: 10 },
+      { altitude: 1000, velocity: 80, fuel: 10 },
+      { altitude: 2000, velocity: 80, fuel: 10 },
+    ];
+    for (const { altitude, velocity, fuel } of impossible) {
+      const trace = simulate(createState({ altitude, velocity, fuel }), autopilot);
+      const f = trace[trace.length - 1];
+      expect(f.landed || f.crashed).toBe(true);
+    }
   });
 });

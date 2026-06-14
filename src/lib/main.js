@@ -99,6 +99,13 @@ export function score(traceOrState) {
   return (initialFuel - fuelUsed) * 10 + Math.max(0, (4 - landingVelocity) * 25);
 }
 
+export function autopilot(state) {
+  if (state.altitude <= 0 || state.fuel <= 0) return 0;
+  const vSafe = Math.max(4, 2.2 * Math.sqrt(state.altitude));
+  if (state.velocity <= vSafe) return 0;
+  return Math.max(0, Math.min(Math.ceil((state.velocity - vSafe + 2) / 4), state.fuel));
+}
+
 export function main(args) {
   if (args?.includes("--version")) {
     console.log(version);
