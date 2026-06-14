@@ -27,42 +27,118 @@ export function getIdentity() {
   return { name, version, description };
 }
 
-// FizzBuzz library functions
+// Lunar lander simulation
 
-export function fizzBuzzSingle(n) {
-  // Validate type
-  if (typeof n !== "number") {
-    throw new TypeError("n must be a number");
-  }
-  if (!Number.isInteger(n)) {
-    throw new TypeError("n must be an integer");
-  }
-  // Must be a positive integer for single value
-  if (n < 1) {
-    throw new RangeError("n must be a positive integer");
-  }
-  if (n % 15 === 0) return "FizzBuzz";
-  if (n % 3 === 0) return "Fizz";
-  if (n % 5 === 0) return "Buzz";
-  return String(n);
+const GRAVITY = 2;
+const THRUST_PER_FUEL = 4;
+const SAFE_VELOCITY = 4;
+
+export function createLander(options = {}) {
+  return {
+    altitude: options.altitude ?? 1000,
+    velocity: options.velocity ?? 40,
+    fuel: options.fuel ?? 25,
+    tick: 0,
+    landed: false,
+    crashed: false,
+  };
 }
 
-export function fizzBuzz(n) {
-  if (typeof n !== "number") {
-    throw new TypeError("n must be a number");
+export function stepLander(state) {
+  if (state.landed || state.crashed) {
+    return state;
   }
-  if (!Number.isInteger(n)) {
-    throw new TypeError("n must be an integer");
+
+  const thrustUsed = Math.min(state.fuel, state.thrust ?? 0);
+  const fuelRemaining = state.fuel - thrustUsed;
+
+  let velocity = state.velocity + GRAVITY - thrustUsed * THRUST_PER_FUEL;
+  let altitude = state.altitude - velocity;
+
+  const newState = {
+    altitude,
+    velocity,
+    fuel: fuelRemaining,
+    tick: state.tick + 1,
+    landed: false,
+    crashed: false,
+  };
+
+  if (newState.altitude <= 0) {
+    newState.altitude = 0;
+    newState.landed = true;
+    if (newState.velocity > SAFE_VELOCITY) {
+      newState.crashed = true;
+      newState.landed = false;
+    }
   }
-  if (n < 0) {
-    throw new RangeError("n must be >= 0");
+
+  return newState;
+}
+
+export function simulate(controller, initialState = {}) {
+  const start = createLander(initialState);
+  const trace = [start];
+  let state = start;
+
+  while (!state.landed && !state.crashed) {
+    const thrust = controller(state);
+    state = { ...state, thrust };
+    state = stepLander(state);
+    trace.push(state);
   }
-  if (n === 0) return [];
-  const out = [];
-  for (let i = 1; i <= n; i++) {
-    out.push(fizzBuzzSingle(i));
+
+  return trace;
+}
+
+export function autopilot(state) {
+  if (state.landed || state.crashed) {
+    return 0;
   }
-  return out;
+
+  // If already at safe velocity, minimal burn to maintain
+  if (state.velocity <= SAFE_VELOCITY) {
+    // Just apply enough thrust to combat gravity
+    const thrustToNeutral = GRAVITY / THRUST_PER_FUEL;
+    return Math.min(state.fuel, thrustToNeutral);
+  }
+
+  // We need to decelerate. Use energy equation:
+  // v_f^2 = v_i^2 + 2*a*d
+  // We want v_f = SAFE_VELOCITY at d = 0
+  // But we can't reach exactly d=0, so target a bit higher for margin
+
+  // Accelerate downward (positive velocity means moving down)
+  // We want: SAFE_VELOCITY^2 = velocity^2 + 2*a*altitude
+  // So: a = (SAFE_VELOCITY^2 - velocity^2) / (2 * altitude)
+  // a is negative (deceleration), so this works
+
+  if (state.altitude <= 1) {
+    // Very close to ground, apply full thrust
+    return state.fuel;
+  }
+
+  const requiredAccel = (SAFE_VELOCITY * SAFE_VELOCITY - state.velocity * state.velocity) / (2 * state.altitude);
+  // Net accel = -GRAVITY + (thrust * THRUST_PER_FUEL)
+  // So: thrust * THRUST_PER_FUEL = requiredAccel + GRAVITY
+  const thrustNeeded = (requiredAccel + GRAVITY) / THRUST_PER_FUEL;
+
+  // Clamp between 0 and available fuel
+  return Math.max(0, Math.min(state.fuel, thrustNeeded));
+}
+
+export function scoreLanding(trace) {
+  const final = trace[trace.length - 1];
+
+  if (final.crashed) {
+    return 0;
+  }
+
+  const initial = trace[0];
+  const fuelRemaining = final.fuel;
+  const landingVelocity = final.velocity;
+
+  return fuelRemaining * 10 + Math.max(0, (SAFE_VELOCITY - landingVelocity) * 25);
 }
 
 export function main(args) {
