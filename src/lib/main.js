@@ -96,34 +96,20 @@ export function autopilot(state) {
     return 0;
   }
 
-  // If already at safe velocity, minimal burn to maintain
-  if (state.velocity <= SAFE_VELOCITY) {
-    // Just apply enough thrust to combat gravity
-    const thrustToNeutral = GRAVITY / THRUST_PER_FUEL;
-    return Math.min(state.fuel, thrustToNeutral);
-  }
-
-  // We need to decelerate. Use energy equation:
-  // v_f^2 = v_i^2 + 2*a*d
-  // We want v_f = SAFE_VELOCITY at d = 0
-  // But we can't reach exactly d=0, so target a bit higher for margin
-
-  // Accelerate downward (positive velocity means moving down)
-  // We want: SAFE_VELOCITY^2 = velocity^2 + 2*a*altitude
-  // So: a = (SAFE_VELOCITY^2 - velocity^2) / (2 * altitude)
-  // a is negative (deceleration), so this works
-
   if (state.altitude <= 1) {
-    // Very close to ground, apply full thrust
     return state.fuel;
   }
 
+  // Calculate required deceleration to reach SAFE_VELOCITY at ground level
+  // Using kinematic equation: v_f^2 = v_i^2 + 2*a*d
+  // SAFE_VELOCITY^2 = velocity^2 + 2*a*altitude
+  // a = (SAFE_VELOCITY^2 - velocity^2) / (2 * altitude)
   const requiredAccel = (SAFE_VELOCITY * SAFE_VELOCITY - state.velocity * state.velocity) / (2 * state.altitude);
-  // Net accel = -GRAVITY + (thrust * THRUST_PER_FUEL)
-  // So: thrust * THRUST_PER_FUEL = requiredAccel + GRAVITY
-  const thrustNeeded = (requiredAccel + GRAVITY) / THRUST_PER_FUEL;
 
-  // Clamp between 0 and available fuel
+  // Net acceleration equation: net_accel = GRAVITY - (thrust * THRUST_PER_FUEL)
+  // Solving for thrust: thrust = (GRAVITY - requiredAccel) / THRUST_PER_FUEL
+  const thrustNeeded = (GRAVITY - requiredAccel) / THRUST_PER_FUEL;
+
   return Math.max(0, Math.min(state.fuel, thrustNeeded));
 }
 
