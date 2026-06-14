@@ -91,40 +91,64 @@ export function simulate(controller, initialState = {}) {
   return trace;
 }
 
+function simulateToLand(initialState, thrustFn) {
+  let state = initialState;
+  const trace = [state];
+
+  for (let i = 0; i < 1000; i++) {
+    if (state.landed || state.crashed) break;
+
+    const thrust = thrustFn(state);
+    state = { ...state, thrust };
+    state = stepLander(state);
+    trace.push(state);
+  }
+
+  return trace;
+}
+
 export function autopilot(state) {
   if (state.landed || state.crashed) {
     return 0;
   }
 
-  // If already at safe velocity, minimal burn to maintain
-  if (state.velocity <= SAFE_VELOCITY) {
-    // Just apply enough thrust to combat gravity
-    const thrustToNeutral = GRAVITY / THRUST_PER_FUEL;
-    return Math.min(state.fuel, thrustToNeutral);
+  const h = state.altitude;
+  const v = state.velocity;
+  const f = state.fuel;
+
+  // If already at or below safe velocity, coast
+  if (v <= SAFE_VELOCITY) {
+    return 0;
   }
 
-  // We need to decelerate. Use energy equation:
-  // v_f^2 = v_i^2 + 2*a*d
-  // We want v_f = SAFE_VELOCITY at d = 0
-  // But we can't reach exactly d=0, so target a bit higher for margin
-
-  // Accelerate downward (positive velocity means moving down)
-  // We want: SAFE_VELOCITY^2 = velocity^2 + 2*a*altitude
-  // So: a = (SAFE_VELOCITY^2 - velocity^2) / (2 * altitude)
-  // a is negative (deceleration), so this works
-
-  if (state.altitude <= 1) {
-    // Very close to ground, apply full thrust
-    return state.fuel;
+  // If very close, full thrust
+  if (h <= 2) {
+    return f;
   }
 
-  const requiredAccel = (SAFE_VELOCITY * SAFE_VELOCITY - state.velocity * state.velocity) / (2 * state.altitude);
-  // Net accel = -GRAVITY + (thrust * THRUST_PER_FUEL)
-  // So: thrust * THRUST_PER_FUEL = requiredAccel + GRAVITY
-  const thrustNeeded = (requiredAccel + GRAVITY) / THRUST_PER_FUEL;
+  // Binary search for the minimum thrust that lands safely
+  let lo = 0;
+  let hi = f;
+  let bestThrust = f;
 
-  // Clamp between 0 and available fuel
-  return Math.max(0, Math.min(state.fuel, thrustNeeded));
+  for (let iter = 0; iter < 30; iter++) {
+    const mid = (lo + hi) / 2;
+
+    // Test: simulate with constant thrust = mid
+    const testTrace = simulateToLand(state, () => mid);
+    const finalState = testTrace[testTrace.length - 1];
+
+    if (finalState.landed && !finalState.crashed) {
+      // Safe landing! Try lower thrust
+      bestThrust = mid;
+      hi = mid;
+    } else if (finalState.crashed || (!finalState.landed && !finalState.crashed)) {
+      // Either crashed or infinite loop, need more thrust
+      lo = mid;
+    }
+  }
+
+  return Math.max(0, Math.min(f, bestThrust));
 }
 
 export function scoreLanding(trace) {
