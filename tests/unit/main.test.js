@@ -11,6 +11,7 @@ import {
   step,
   simulate,
   score,
+  autopilot,
 } from "../../src/lib/main.js";
 
 describe("Main Output", () => {
@@ -260,5 +261,132 @@ describe("score", () => {
     ];
     const expectedScore = (25 - 10) * 10 + (4 - 3) * 25;
     expect(score(trace)).toBe(expectedScore);
+  });
+});
+
+describe("autopilot", () => {
+  test("returns 0 when already landed", () => {
+    const state = { altitude: 0, velocity: 2, fuel: 10, tick: 0, landed: true, crashed: false };
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("returns 0 when no fuel", () => {
+    const state = { altitude: 100, velocity: 50, fuel: 0, tick: 0, landed: false, crashed: false };
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("returns 0 when velocity is safe", () => {
+    const state = { altitude: 100, velocity: 2, fuel: 10, tick: 0, landed: false, crashed: false };
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("lands default initial conditions", () => {
+    const state = createState();
+    const trace = simulate(state, autopilot);
+    const finalState = trace[trace.length - 1];
+    expect(finalState.landed).toBe(true);
+    expect(finalState.crashed).toBe(false);
+    expect(finalState.velocity).toBeLessThanOrEqual(4);
+  });
+
+  test("never requests more fuel than available", () => {
+    const state = createState({ altitude: 1500, velocity: 60, fuel: 15 });
+    const thrust = autopilot(state);
+    expect(thrust).toBeLessThanOrEqual(state.fuel);
+    expect(thrust).toBeGreaterThanOrEqual(0);
+  });
+
+  test("lands at least 10 distinct combinations from ranges", () => {
+    const combinations = [
+      { altitude: 500, velocity: 20, fuel: 20 },
+      { altitude: 700, velocity: 30, fuel: 25 },
+      { altitude: 1000, velocity: 40, fuel: 25 },
+      { altitude: 1200, velocity: 50, fuel: 35 },
+      { altitude: 1500, velocity: 60, fuel: 40 },
+      { altitude: 1800, velocity: 70, fuel: 45 },
+      { altitude: 600, velocity: 25, fuel: 22 },
+      { altitude: 1100, velocity: 45, fuel: 30 },
+      { altitude: 1300, velocity: 55, fuel: 38 },
+      { altitude: 1600, velocity: 65, fuel: 42 },
+      { altitude: 800, velocity: 35, fuel: 28 },
+      { altitude: 550, velocity: 22, fuel: 18 },
+    ];
+
+    let successCount = 0;
+    combinations.forEach((combo) => {
+      const state = createState(combo);
+      const trace = simulate(state, autopilot);
+      const finalState = trace[trace.length - 1];
+      const landed = finalState.landed && !finalState.crashed && finalState.velocity <= 4;
+      if (landed) successCount++;
+    });
+
+    expect(successCount).toBeGreaterThanOrEqual(10);
+  });
+
+  test("handles physically impossible combinations with crash trace", () => {
+    const impossibleCombos = [
+      { altitude: 500, velocity: 80, fuel: 10 },
+      { altitude: 600, velocity: 70, fuel: 8 },
+    ];
+
+    for (const combo of impossibleCombos) {
+      const state = createState(combo);
+      expect(() => {
+        simulate(state, autopilot);
+      }).not.toThrow();
+
+      const trace = simulate(state, autopilot);
+      const finalState = trace[trace.length - 1];
+      expect(finalState.crashed || finalState.landed).toBe(true);
+    }
+  });
+
+  test("thrust calculations respect fuel constraints", () => {
+    for (let i = 0; i < 10; i++) {
+      const state = {
+        altitude: 100 + Math.random() * 1900,
+        velocity: 20 + Math.random() * 60,
+        fuel: 10 + Math.random() * 40,
+        tick: 0,
+        landed: false,
+        crashed: false,
+      };
+      const thrust = autopilot(state);
+      expect(thrust).toBeGreaterThanOrEqual(0);
+      expect(thrust).toBeLessThanOrEqual(state.fuel);
+      expect(Number.isInteger(thrust)).toBe(true);
+    }
+  });
+
+  test("maintains safe velocity bound", () => {
+    const state = createState({ altitude: 1000, velocity: 40, fuel: 25 });
+    const vSafe = Math.max(4, 2.2 * Math.sqrt(state.altitude));
+    const thrust = autopilot(state);
+    const newVelocity = state.velocity + 2 - 4 * thrust;
+    expect(newVelocity).toBeLessThanOrEqual(vSafe + 4);
+  });
+
+  test("simulate with autopilot reaches landing or crash", () => {
+    const testCases = [
+      createState({ altitude: 500, velocity: 30, fuel: 15 }),
+      createState({ altitude: 1000, velocity: 40, fuel: 25 }),
+      createState({ altitude: 1500, velocity: 50, fuel: 30 }),
+    ];
+
+    for (const state of testCases) {
+      const trace = simulate(state, autopilot);
+      const finalState = trace[trace.length - 1];
+      expect(finalState.landed || finalState.crashed).toBe(true);
+    }
+  });
+
+  test("autopilot score is positive for successful landings", () => {
+    const state = createState();
+    const trace = simulate(state, autopilot);
+    const scoreValue = score(trace);
+    if (trace[trace.length - 1].landed) {
+      expect(scoreValue).toBeGreaterThan(0);
+    }
   });
 });
