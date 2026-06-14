@@ -99,6 +99,38 @@ export function score(traceOrState) {
   return (initialFuel - fuelUsed) * 10 + Math.max(0, (4 - landingVelocity) * 25);
 }
 
+export function autopilot(state) {
+  // Controller for the nominal (default) case: altitude 1000, velocity 40, fuel 25.
+  // Physics: newVel = vel + 2 - 4*thrust; newAlt = alt - newVel
+  // Each fuel unit: reduces velocity by 4, but gravity adds 2, net -2 per fuel.
+  // Must land with velocity ≤ 4 m/s.
+
+  const { altitude, velocity, fuel } = state;
+
+  if (altitude <= 0 || velocity <= 4) {
+    return 0;
+  }
+
+  // Simple bang-bang control: apply steady thrust to decelerate safely.
+  // For nominal case: use ~8 units total over descent to bring vel from 40 to ~2.
+  // Distribute across ~30-40 ticks means ~0.2-0.3 fuel per tick.
+  // But proportional is better: more thrust when velocity is high, less when low.
+
+  // Proportional: thrust = velocity / 10, scaled gently
+  // This ensures we gradually decelerate from 40 → 4 over time.
+  let thrust = Math.ceil(velocity / 10);
+
+  // At very high velocity, ensure we still decelerate (min 1 fuel)
+  if (velocity > 8) {
+    thrust = Math.max(1, thrust);
+  }
+
+  // Clamp to available fuel
+  thrust = Math.min(thrust, fuel);
+
+  return thrust;
+}
+
 export function main(args) {
   if (args?.includes("--version")) {
     console.log(version);

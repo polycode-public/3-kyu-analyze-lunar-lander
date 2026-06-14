@@ -11,6 +11,7 @@ import {
   step,
   simulate,
   score,
+  autopilot,
 } from "../../src/lib/main.js";
 
 describe("Main Output", () => {
@@ -260,5 +261,49 @@ describe("score", () => {
     ];
     const expectedScore = (25 - 10) * 10 + (4 - 3) * 25;
     expect(score(trace)).toBe(expectedScore);
+  });
+});
+
+describe("autopilot", () => {
+  test("returns 0 when velocity is safe", () => {
+    const state = createState({ altitude: 100, velocity: 2, fuel: 10 });
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("returns positive thrust when velocity is high", () => {
+    const state = createState({ altitude: 1000, velocity: 40, fuel: 25 });
+    const thrust = autopilot(state);
+    expect(thrust).toBeGreaterThan(0);
+    expect(thrust).toBeLessThanOrEqual(25);
+  });
+
+  test("never requests more fuel than available", () => {
+    const state = createState({ altitude: 1000, velocity: 40, fuel: 5 });
+    const thrust = autopilot(state);
+    expect(thrust).toBeLessThanOrEqual(5);
+  });
+
+  test("returns 0 when landed", () => {
+    const state = { altitude: 0, velocity: 2, fuel: 20, tick: 5, landed: true, crashed: false };
+    expect(autopilot(state)).toBe(0);
+  });
+
+  test("lands safely from default conditions", () => {
+    const state = createState();
+    const trace = simulate(state, autopilot);
+    const finalState = trace[trace.length - 1];
+
+    expect(finalState.landed).toBe(true);
+    expect(finalState.crashed).toBe(false);
+    expect(finalState.velocity).toBeLessThanOrEqual(4);
+    expect(finalState.altitude).toBe(0);
+  });
+
+  test("produces positive score from default conditions", () => {
+    const state = createState();
+    const trace = simulate(state, autopilot);
+    const landingScore = score(trace);
+
+    expect(landingScore).toBeGreaterThan(0);
   });
 });
