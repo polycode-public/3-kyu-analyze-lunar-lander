@@ -125,3 +125,6 @@ if (isNode) {
     main(args);
   }
 }
+
+// demo() — exercised by src/web/lib.js renderDemo for the showcase screenshot.
+export const demo = () => { const trace = simulate(createState(), autopilot); const f = trace[trace.length - 1]; return "autopilot: " + (f.landed ? "LANDED" : "crashed") + " (v" + f.velocity + ") in " + trace.length + " ticks, score " + score(trace); };
