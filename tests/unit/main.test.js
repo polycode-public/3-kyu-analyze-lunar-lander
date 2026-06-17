@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (C) 2025-2026 Polycode Limited
 import { describe, test, expect } from "vitest";
-import { main, getIdentity, name, version, description, createState, step, simulate, score } from "../../src/lib/main.js";
+import { main, getIdentity, name, version, description, createState, step, simulate, score, autopilot, demo } from "../../src/lib/main.js";
 
 describe("Main Output", () => {
   test("should terminate without error", () => {
@@ -196,5 +196,115 @@ describe("Scoring: score", () => {
     const trace = simulate(state, () => 0);
     const scoreVal = score(trace);
     expect(scoreVal).toBeGreaterThan(0);
+  });
+});
+
+describe("Autopilot Controller", () => {
+  test("autopilot lands safely with default conditions", () => {
+    const state = createState();
+    const trace = simulate(state, autopilot);
+    const final = trace[trace.length - 1];
+    expect(final.landed).toBe(true);
+    expect(final.crashed).toBe(false);
+  });
+
+  test("autopilot never throws on impossible combinations", () => {
+    const testCases = [
+      { altitude: 500, velocity: 80, fuel: 10 },
+      { altitude: 600, velocity: 75, fuel: 15 },
+      { altitude: 700, velocity: 60, fuel: 8 },
+    ];
+    for (const opts of testCases) {
+      const state = createState(opts);
+      expect(() => {
+        simulate(state, autopilot);
+      }).not.toThrow();
+    }
+  });
+
+  test("autopilot returns 0 when altitude <= 0", () => {
+    const state = createState({ altitude: 0, velocity: 40, fuel: 25 });
+    const thrust = autopilot(state);
+    expect(thrust).toBe(0);
+  });
+
+  test("autopilot returns 0 when fuel <= 0", () => {
+    const state = createState({ altitude: 500, velocity: 40, fuel: 0 });
+    const thrust = autopilot(state);
+    expect(thrust).toBe(0);
+  });
+
+  test("autopilot returns 0 when velocity is safe", () => {
+    const state = createState({ altitude: 100, velocity: 2, fuel: 25 });
+    const thrust = autopilot(state);
+    expect(thrust).toBe(0);
+  });
+
+  test("autopilot never exceeds available fuel", () => {
+    const altitudes = [500, 800, 1000, 1500, 2000];
+    const velocities = [20, 40, 60, 80];
+    const fuels = [10, 20, 30, 50];
+    for (const altitude of altitudes) {
+      for (const velocity of velocities) {
+        for (const fuel of fuels) {
+          const state = createState({ altitude, velocity, fuel });
+          const thrust = autopilot(state);
+          expect(thrust).toBeLessThanOrEqual(state.fuel);
+          expect(thrust).toBeGreaterThanOrEqual(0);
+          expect(Number.isInteger(thrust)).toBe(true);
+        }
+      }
+    }
+  });
+
+  test("autopilot lands safely across at least 10 grid combinations", () => {
+    const altitudes = [500, 750, 1000, 1250, 1500, 1750, 2000];
+    const velocities = [20, 35, 50, 65, 80];
+    const fuels = [10, 20, 35, 50];
+    const landings = [];
+    for (const altitude of altitudes) {
+      for (const velocity of velocities) {
+        for (const fuel of fuels) {
+          const state = createState({ altitude, velocity, fuel });
+          const trace = simulate(state, autopilot);
+          const final = trace[trace.length - 1];
+          if (final.landed) {
+            landings.push({ altitude, velocity, fuel });
+          }
+        }
+      }
+    }
+    expect(landings.length).toBeGreaterThanOrEqual(10);
+  });
+
+  test("autopilot handles edge case: velocity above safe threshold requires thrust", () => {
+    const state = createState({ altitude: 100, velocity: 25, fuel: 25 });
+    const vSafe = Math.max(4, 2.2 * Math.sqrt(100));
+    expect(vSafe).toBe(22);
+    const thrust = autopilot(state);
+    expect(thrust).toBeGreaterThan(0);
+  });
+
+  test("autopilot returns integer thrust values", () => {
+    const testStates = [
+      createState({ altitude: 500, velocity: 50, fuel: 25 }),
+      createState({ altitude: 1000, velocity: 40, fuel: 20 }),
+      createState({ altitude: 1500, velocity: 60, fuel: 30 }),
+    ];
+    for (const state of testStates) {
+      const thrust = autopilot(state);
+      expect(Number.isInteger(thrust)).toBe(true);
+    }
+  });
+});
+
+describe("Demo Output", () => {
+  test("demo uses autopilot and lands successfully", () => {
+    const result = demo();
+    expect(result.finalState.landed).toBe(true);
+    expect(result.finalState.crashed).toBe(false);
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.trace).toBeDefined();
+    expect(Array.isArray(result.trace)).toBe(true);
   });
 });

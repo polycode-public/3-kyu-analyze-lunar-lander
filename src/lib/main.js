@@ -73,15 +73,22 @@ export function score(traceOrFinalState) {
   return (initialFuel - fuelUsed) * 10 + Math.max(0, (4 - finalState.velocity) * 25);
 }
 
+export function autopilot(state) {
+  if (state.altitude <= 0 || state.fuel <= 0) return 0;
+  const vSafe = Math.max(4, 2.2 * Math.sqrt(state.altitude));
+  if (state.velocity <= vSafe) return 0;
+  return Math.max(0, Math.min(Math.ceil((state.velocity - vSafe + 2) / 4), state.fuel));
+}
+
 export function demo() {
   const state = createState();
-  const controller = () => 0;
-  const trace = simulate(state, controller);
+  const trace = simulate(state, autopilot);
   return {
     initialState: state,
     finalState: trace[trace.length - 1],
     score: score(trace),
     traceLength: trace.length,
+    trace: trace,
   };
 }
 
